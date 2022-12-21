@@ -1,237 +1,131 @@
+# Creating k8s cluster from scratch and updating versions
+**You need 2 nodes (1 for master and 1 for worker) with joint network. In this case 10.0.0.3 should be internal address for worker node and 10.0.0.2 for master**
 
+## Setup this step for both instances
+`echo "10.0.0.3  worker1.example.com worker1" > /etc/hosts`
+`echo "10.0.0.2 cp1.example.com cp1" /etc/hosts`
 
-10.0.0.3  worker1.example.com worker1
-10.0.0.2 cp1.example.com cp1
+*Use one for these for each instance*
+`hostnamectl set-hostname cp1` - for master node
+`hostnamectl set-hostname worker1` - for worker node
 
-# one of these:
-hostnamectl set-hostname cp1
-hostnamectl set-hostname worker1
+`modprobe br_netfilter`
+`modprobe overlay`
 
-modprobe br_netfilter
-modprobe overlay
-
-cat << EOF | tee /etc/modules-load.d/k8s-modules.conf
+`cat << EOF | tee /etc/modules-load.d/k8s-modules.conf
 br_netfilter
 overlay
-EOF
+EOF`
 
-cat << EOF |  tee /etc/sysctl.d/k8s.conf
+`cat << EOF |  tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
-EOF
+EOF`
 
-sysctl --system
+`sysctl --system`
 
-apt-get update ; apt-get install -y containerd
+`apt-get update ; apt-get install -y containerd`
 
-mkdir -p /etc/containerd
+`mkdir -p /etc/containerd`
 
-containerd config default | tee /etc/containerd/config.toml
+`containerd config default | tee /etc/containerd/config.toml`
 
-sed -i "s/SystemdCgroup = false/SystemdCgroup = true/g" /etc/containerd/config.toml
+`sed -i "s/SystemdCgroup = false/SystemdCgroup = true/g" /etc/containerd/config.toml`
 
-systemctl restart containerd
+`systemctl restart containerd`
 
-swapoff -a
+`swapoff -a`
 
-apt-get install -y apt-transport-https curl
+`apt-get install -y apt-transport-https curl`
 
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add
+`curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add`
 
-apt-add-repository "deb http://apt.kubernetes.io/ kubernetes-xenial main"
+`apt-add-repository "deb http://apt.kubernetes.io/ kubernetes-xenial main"`
 
-apt install -y kubeadm=1.22.0-00 kubelet=1.22.0-00 kubectl=1.22.0-00
-apt-mark hold kubeadm kubectl kubelet
-# for master node
-
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/tigera-operator.yaml -O
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/custom-resources.yaml -O
-
-sed -i 's|192.168.0.0/16|10.0.0.0/18|' custom-resources.yaml
-
-kubeadm init --pod-network-cidr=10.0.0.0/18
-mkdir -p $HOME/.kube
-
-cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-
-chown $(id -u):$(id -g) $HOME/.kube/config
-
-kubectl create -f tigera-operator.yaml
-kubectl create -f custom-resources.yaml
-# kubeadm init --pod-network-cidr=10.0.0.0/18 --apiserver-advertise-address=10.0.0.3
+`apt install -y kubeadm=1.22.0-00 kubelet=1.22.0-00 kubectl=1.22.0-00`
+`apt-mark hold kubeadm kubectl kubelet`
 
 
-# UPDATE to 1.23
+## For master node
+### Installation network addon and initiating node to cluster 
 
-# on master node
-apt-mark unhold kubeadm && \
+`curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/tigera-operator.yaml -O`
+`curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/custom-resources.yaml -O`
+
+*Replacing default network in calico custom-resource mask to ours (in this example - 10.0.0.0/18)*
+`sed -i 's|192.168.0.0/16|10.0.0.0/18|' custom-resources.yaml`
+
+`kubeadm init --pod-network-cidr=10.0.0.0/18`
+`mkdir -p $HOME/.kube`
+
+`cp -i /etc/kubernetes/admin.conf $HOME/.kube/config`
+
+`chown $(id -u):$(id -g) $HOME/.kube/config`
+`kubectl create -f tigera-operator.yaml`
+`kubectl create -f custom-resources.yaml`
+
+
+# UPDATE to 1.23 version
+
+## On master node
+`apt-mark unhold kubeadm && \
 apt-get update && apt-get install -y kubeadm=1.23.15-00 && \
-apt-mark hold kubeadm
+apt-mark hold kubeadm`
 
-kubeadm upgrade apply v1.23.15
+`kubeadm upgrade apply v1.23.15`
 
-kubectl drain cp1 --ignore-daemonsets
-apt-mark unhold kubelet kubectl && \
+`kubectl drain cp1 --ignore-daemonsets`
+`apt-mark unhold kubelet kubectl && \
 apt-get update && apt-get install -y kubelet=1.23.15-00 kubectl=1.23.15-00 && \
-apt-mark hold kubelet kubectl
+apt-mark hold kubelet kubectl`
 
-systemctl daemon-reload
-systemctl restart kubelet
+`systemctl daemon-reload`
+`systemctl restart kubelet`
 
-kubectl uncordon cp1
+`kubectl uncordon cp1`
 
-# worker node
+# On worker node
 
-apt-mark unhold kubeadm && \
+`apt-mark unhold kubeadm && \
 apt-get update && apt-get install -y kubeadm=1.23.15-00 && \
-apt-mark hold kubeadm
+apt-mark hold kubeadm`
 
-kubeadm upgrade node
+`kubeadm upgrade node`
 
-kubectl drain worker1 --ignore-daemonsets
+`kubectl drain worker1 --ignore-daemonsets` - **this should be typed to master node**
 
-apt-mark unhold kubelet kubectl && \
+`apt-mark unhold kubelet kubectl && \
 apt-get update && apt-get install -y kubelet=1.23.15-00 kubectl=1.23.15-00 && \
-apt-mark hold kubelet kubectl
+apt-mark hold kubelet kubectl`
 
-systemctl daemon-reload
-systemctl restart kubelet
+`systemctl daemon-reload`
+`systemctl restart kubelet`
 
-kubectl uncordon worker1
+`kubectl uncordon worker1` - **this should be typed to master node**
 
-# UPDATE TO 1.24
-
-# master node
-
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.24.9-00 && \
-apt-mark hold kubeadm
-
-kubeadm upgrade apply v1.24.9
-
-kubectl drain cp1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.24.9-00 kubectl=1.24.9-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon cp1
-
-** to upgrade to version 1.24.9 option --network-plugin=cni should be removed from the file /var/lib/kubelet/kubeadm-flags.env
-
-# worker node
-
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.24.9-00 && \
-apt-mark hold kubeadm
-
-kubeadm upgrade node
-
-kubectl drain worker1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.24.9-00 kubectl=1.24.9-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon worker1
-
-# UPDATE to 1.25 
-
-# master node
-
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.25.5-00 && \
-apt-mark hold kubeadm
-
-kubeadm upgrade plan
-kubeadm upgrade apply v1.25.5
-
-kubectl drain cp1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.25.5-00 kubectl=1.25.5-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon cp1
+**And so on until 1.26.0 version. After you update to 1.26.0 you'll have some troubles, which can be solved by upgrading containerd**
 
 
-# worket node
+# Upgrading comtainerd
 
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.25.5-00 && \
-apt-mark hold kubeadm
+## For master node
 
-kubeadm upgrade node
-
-kubectl drain worker1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.25.5-00 kubectl=1.25.5-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon worker1
+`kubectl drain $(hostname) --ignore-daemonsets`
+`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`
+`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`
+`containerd config default | sudo tee /etc/containerd/config.toml`
+`systemctl enable containerd`
+`systemctl restart containerd`
+`kubectl uncordon cp1`
 
 
-# UPDATE to 1.26
+## For worker node
 
-# master node
-
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.26.0-00 && \
-apt-mark hold kubeadm
-
-kubeadm upgrade plan
-kubeadm upgrade apply v1.26.0
-
-kubectl drain cp1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.26.0-00 kubectl=1.26.0-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon cp1
-
-
-# worket node
-
-apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.26.0-00 && \
-apt-mark hold kubeadm
-
-kubeadm upgrade node
-
-kubectl drain worker1 --ignore-daemonsets
-
-apt-mark unhold kubelet kubectl && \
-apt-get update && apt-get install -y kubelet=1.26.0-00 kubectl=1.26.0-00 && \
-apt-mark hold kubelet kubectl
-
-systemctl daemon-reload
-systemctl restart kubelet
-
-kubectl uncordon worker1
-
-
-
-# upgrading comtainerd
-
-wget https://github.com/containerd/containerd/releases/download/v1.6.14/containerd-1.6.14-linux-amd64.tar.gz
-tar Cxzvf /usr/local containerd-1.6.14-linux-amd64.tar.gz
-systemctl daemon-reload
-systemctl enable --now containerd
+`kubectl drain $(hostname) --ignore-daemonsets` - **this should be typed to master node**
+`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`
+`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`
+`containerd config default | sudo tee /etc/containerd/config.toml`
+`systemctl enable containerd`
+`systemctl restart containerd`
+`kubectl uncordon cp1` - **this should be typed to master node**
