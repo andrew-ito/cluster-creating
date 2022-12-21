@@ -2,14 +2,14 @@
 **You need 2 nodes (1 for master and 1 for worker) with joint network. In this case 10.0.0.3 should be internal address for worker node and 10.0.0.2 for master**
 
 ## Setup this step for both instances
-`echo "10.0.0.3  worker1.example.com worker1" > /etc/hosts`
+`echo "10.0.0.3  worker1.example.com worker1" > /etc/hosts`<br />
 `echo "10.0.0.2 cp1.example.com cp1" /etc/hosts`
 
-*Use one for these for each instance*
-`hostnamectl set-hostname cp1` - for master node
+*Use one for these for each instance*<br />
+`hostnamectl set-hostname cp1` - for master node<br />
 `hostnamectl set-hostname worker1` - for worker node
 
-`modprobe br_netfilter`
+`modprobe br_netfilter`<br />
 `modprobe overlay`
 
 `cat << EOF | tee /etc/modules-load.d/k8s-modules.conf
@@ -43,44 +43,44 @@ EOF`
 
 `apt-add-repository "deb http://apt.kubernetes.io/ kubernetes-xenial main"`
 
-`apt install -y kubeadm=1.22.0-00 kubelet=1.22.0-00 kubectl=1.22.0-00`
+`apt install -y kubeadm=1.22.0-00 kubelet=1.22.0-00 kubectl=1.22.0-00`<br />
 `apt-mark hold kubeadm kubectl kubelet`
 
 
 ## For master node
 ### Installation network addon and initiating node to cluster 
 
-`curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/tigera-operator.yaml -O`
+`curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/tigera-operator.yaml -O`<br />
 `curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.5/manifests/custom-resources.yaml -O`
 
-*Replacing default network in calico custom-resource mask to ours (in this example - 10.0.0.0/18)*
+*Replacing default network in calico custom-resource mask to ours (in this example - 10.0.0.0/18)*<br />
 `sed -i 's|192.168.0.0/16|10.0.0.0/18|' custom-resources.yaml`
 
-`kubeadm init --pod-network-cidr=10.0.0.0/18`
+`kubeadm init --pod-network-cidr=10.0.0.0/18`<br />
 `mkdir -p $HOME/.kube`
 
 `cp -i /etc/kubernetes/admin.conf $HOME/.kube/config`
 
-`chown $(id -u):$(id -g) $HOME/.kube/config`
-`kubectl create -f tigera-operator.yaml`
+`chown $(id -u):$(id -g) $HOME/.kube/config`<br />
+`kubectl create -f tigera-operator.yaml`<br />
 `kubectl create -f custom-resources.yaml`
 
 
 # UPDATE to 1.23 version
 
 ## On master node
-`apt-mark unhold kubeadm && \
-apt-get update && apt-get install -y kubeadm=1.23.15-00 && \
+`apt-mark unhold kubeadm && \<br />
+apt-get update && apt-get install -y kubeadm=1.23.15-00 && \<br />
 apt-mark hold kubeadm`
 
 `kubeadm upgrade apply v1.23.15`
 
-`kubectl drain cp1 --ignore-daemonsets`
+`kubectl drain cp1 --ignore-daemonsets`<br />
 `apt-mark unhold kubelet kubectl && \
 apt-get update && apt-get install -y kubelet=1.23.15-00 kubectl=1.23.15-00 && \
 apt-mark hold kubelet kubectl`
 
-`systemctl daemon-reload`
+`systemctl daemon-reload`<br />
 `systemctl restart kubelet`
 
 `kubectl uncordon cp1`
@@ -111,21 +111,25 @@ apt-mark hold kubelet kubectl`
 
 ## For master node
 
-`kubectl drain $(hostname) --ignore-daemonsets`
-`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`
-`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`
-`containerd config default | sudo tee /etc/containerd/config.toml`
-`systemctl enable containerd`
-`systemctl restart containerd`
+`kubectl drain $(hostname) --ignore-daemonsets`<br />
+`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`<br />
+`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`<br />
+`containerd config default | sudo tee /etc/containerd/config.toml`<br />
+`systemctl enable containerd`<br />
+`systemctl restart containerd`<br />
 `kubectl uncordon cp1`
 
 
 ## For worker node
 
-`kubectl drain $(hostname) --ignore-daemonsets` - **this should be typed to master node**
-`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`
-`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`
-`containerd config default | sudo tee /etc/containerd/config.toml`
-`systemctl enable containerd`
-`systemctl restart containerd`
+`kubectl drain $(hostname) --ignore-daemonsets` - **this should be typed to master node**<br />
+`curl -L https://github.com/containerd/containerd/releases/download/v${VERSION}/containerd-${VERSION}-linux-amd64.tar.gz | sudo tar -xvz -C /usr/`<br />
+`cp /etc/containerd/config.toml /etc/containerd/config.toml.bak-$(date +"%Y-%m-%dT%H:%M:%S")`<br />
+`containerd config default | sudo tee /etc/containerd/config.toml`<br />
+`systemctl enable containerd`<br />
+`systemctl restart containerd`<br />
 `kubectl uncordon cp1` - **this should be typed to master node**
+
+**After all wait a minute and try to type on your master node next commands:**
+`kubectl get nodes`
+`kubectl get po -A`
